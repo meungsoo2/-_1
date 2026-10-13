@@ -249,12 +249,55 @@ Private Sub SetupMusicPlayback(pres As Presentation)
     ' 맨 앞(Index 1)에 "이전 효과와 함께" 재생 효과 추가 -> 슬라이드 시작 즉시 재생
     Set eff = seq.AddEffect(Shape:=snd, effectId:=msoAnimEffectMediaPlay, _
                             trigger:=msoAnimTriggerWithPrevious, Index:=1)
+    eff.Timing.TriggerDelayTime = 0
     With eff.EffectInformation.PlaySettings
         .StopAfterSlides = 999        ' 마지막 슬라이드까지 계속
         .LoopUntilStopped = msoTrue   ' 음악이 짧으면 반복
         .HideWhileNotPlaying = msoTrue
         .PauseAnimation = msoFalse
     End With
+End Sub
+
+' 음악 문제 진단: 결과를 메시지 창으로 보여 줍니다
+Public Sub CheckMusic()
+    Dim pres As Presentation
+    Dim snd As Shape
+    Dim seq As Sequence
+    Dim msg As String
+    Dim i As Long, trig As String
+
+    Set pres = ActivePresentation
+    For i = 1 To pres.Slides(1).Shapes.Count
+        If pres.Slides(1).Shapes(i).Type = msoMedia Then
+            Set snd = pres.Slides(1).Shapes(i)
+            msg = msg & "1번 슬라이드 미디어: " & snd.Name & vbCrLf
+        End If
+    Next i
+    If snd Is Nothing Then
+        MsgBox "1번 슬라이드에 음악이 없습니다." & vbCrLf & "AddBackgroundMusic 을 다시 실행하세요.", vbExclamation
+        Exit Sub
+    End If
+
+    On Error Resume Next
+    msg = msg & "길이(초): " & Format(snd.MediaFormat.Length / 1000, "0.0") & vbCrLf
+    msg = msg & "볼륨: " & snd.MediaFormat.Volume & "   음소거: " & snd.MediaFormat.Muted & vbCrLf
+    msg = msg & "파일에 포함됨: " & (snd.MediaFormat.IsLinked = False) & vbCrLf
+    On Error GoTo 0
+
+    msg = msg & vbCrLf & "1번 슬라이드 애니메이션 순서:" & vbCrLf
+    Set seq = pres.Slides(1).TimeLine.MainSequence
+    For i = 1 To seq.Count
+        Select Case seq.Item(i).Timing.TriggerType
+            Case msoAnimTriggerOnPageClick: trig = "클릭할 때"
+            Case msoAnimTriggerWithPrevious: trig = "이전 효과와 함께"
+            Case msoAnimTriggerAfterPrevious: trig = "이전 효과 다음에"
+            Case Else: trig = CStr(seq.Item(i).Timing.TriggerType)
+        End Select
+        msg = msg & i & ". " & seq.Item(i).Shape.Name & " / 효과번호 " & seq.Item(i).EffectType & " / " & trig & vbCrLf
+        If i >= 8 Then msg = msg & "...": Exit For
+    Next i
+
+    MsgBox msg, vbInformation, "음악 진단"
 End Sub
 
 Public Sub ExportVideo()
