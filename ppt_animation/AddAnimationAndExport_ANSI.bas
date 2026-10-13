@@ -2,17 +2,18 @@ Attribute VB_Name = "AddAnimationAndExport"
 ' ============================================================
 '  깔끔한 애니메이션 자동 적용 + MP4 동영상 내보내기
 '  - 슬라이드 전환: 부드럽게 페이드 (0.7초)
-'  - 개체 등장: 위 -> 아래, 왼쪽 -> 오른쪽 순서로 "나타내기(페이드)"
+'  - 개체 등장: 세로로 겹치는 개체끼리 한 덩어리로 묶어, 위 -> 아래 순서로 페이드
 '  - 슬라이드를 꽉 채우는 배경 그림은 애니메이션 없음
 '  - 각 슬라이드 표시 시간 = 애니메이션 끝난 후 SLIDE_HOLD 초
 ' ============================================================
 Option Explicit
 
 ' ---- 원하는 대로 조정하세요 ----
-Private Const SLIDE_HOLD As Single = 3        ' 애니메이션 끝난 뒤 머무는 시간(초)
-Private Const ANIM_DURATION As Single = 0.6   ' 개체 하나가 나타나는 시간(초)
-Private Const ANIM_GAP As Single = 0.3        ' 개체 사이 간격(초)
-Private Const TRANSITION_SEC As Single = 0.7  ' 슬라이드 전환 시간(초)
+Private Const SLIDE_HOLD As Single = 2        ' 애니메이션 끝난 뒤 머무는 시간(초)
+Private Const ANIM_DURATION As Single = 0.4   ' 덩어리 하나가 나타나는 시간(초)
+Private Const ANIM_GAP As Single = 0.1        ' 덩어리 사이 간격(초)
+Private Const TRANSITION_SEC As Single = 0.5  ' 슬라이드 전환 시간(초)
+Private Const MAX_CHUNKS As Long = 3          ' 슬라이드당 최대 덩어리 수 (1 = 슬라이드 전체가 한 번에)
 Private Const VIDEO_HEIGHT As Long = 1080     ' 1080 = Full HD, 720 = HD
 Private Const ANIM_SUFFIX As String = "_애니메이션" ' 새 PPT 파일 이름 뒤에 붙는 말
 Private Const VIDEO_SUFFIX As String = "_동영상"    ' 동영상 파일 이름 뒤에 붙는 말
@@ -52,6 +53,7 @@ Private Sub ApplyToSlide(sld As Slide, slideW As Single, slideH As Single)
     Dim shp As Shape
     Dim eff As Effect
     Dim totalTime As Single
+    Dim chunks As Long, chunkBottom As Single
 
     ' 1) 기존 애니메이션 제거 (지저분함 방지)
     Set seq = sld.TimeLine.MainSequence
@@ -79,21 +81,33 @@ Private Sub ApplyToSlide(sld As Slide, slideW As Single, slideH As Single)
         Next j
     Next i
 
-    ' 4) 페이드 인 효과 추가 (모두 자동 진행 = 클릭 불필요)
+    ' 4) 덩어리 단위 페이드 인 (모두 자동 진행 = 클릭 불필요)
+    '    앞 덩어리와 세로로 겹치는 개체는 같은 덩어리 -> 함께(WithPrevious) 등장
+    chunks = 0
     For i = 1 To n
-        Set eff = seq.AddEffect(Shape:=sld.Shapes(idx(i)), _
-                                effectId:=msoAnimEffectFade, _
-                                trigger:=msoAnimTriggerAfterPrevious)
-        eff.Timing.Duration = ANIM_DURATION
-        If i = 1 Then
-            eff.Timing.TriggerDelayTime = 0.3
+        Set shp = sld.Shapes(idx(i))
+        If chunks = 0 Or (shp.Top >= chunkBottom - 5 And chunks < MAX_CHUNKS) Then
+            ' 새 덩어리 시작
+            chunks = chunks + 1
+            Set eff = seq.AddEffect(Shape:=shp, effectId:=msoAnimEffectFade, _
+                                    trigger:=msoAnimTriggerAfterPrevious)
+            If chunks = 1 Then
+                eff.Timing.TriggerDelayTime = 0.1
+            Else
+                eff.Timing.TriggerDelayTime = ANIM_GAP
+            End If
+            chunkBottom = shp.Top + shp.Height
         Else
-            eff.Timing.TriggerDelayTime = ANIM_GAP
+            ' 같은 덩어리 -> 동시에 등장
+            Set eff = seq.AddEffect(Shape:=shp, effectId:=msoAnimEffectFade, _
+                                    trigger:=msoAnimTriggerWithPrevious)
+            If shp.Top + shp.Height > chunkBottom Then chunkBottom = shp.Top + shp.Height
         End If
+        eff.Timing.Duration = ANIM_DURATION
     Next i
 
     ' 5) 슬라이드 전환 + 자동 넘김 시간
-    totalTime = 0.3 + n * ANIM_DURATION + IIf(n > 1, (n - 1) * ANIM_GAP, 0) + SLIDE_HOLD
+    totalTime = 0.1 + chunks * ANIM_DURATION + IIf(chunks > 1, (chunks - 1) * ANIM_GAP, 0) + SLIDE_HOLD
     With sld.SlideShowTransition
         .EntryEffect = ppEffectFadeSmoothly
         .Duration = TRANSITION_SEC
