@@ -1,7 +1,7 @@
 ﻿<#
   열려 있는 PPT(26 입학 설명회 영상.pptx)를 복사해서
   슬라이드마다 최대 4개 그룹(배경·도형·사진·글자)으로 묶어 화려한 등장/퇴장 애니메이션,
-  자동 넘김(총 50초), 배경음악(같은 폴더의 mp3)을 넣은 새 PPT를 만든다. 원본은 건드리지 않는다.
+  자동 넘김(총 60초), 배경음악(같은 폴더의 mp3)을 넣은 새 PPT를 만든다. 원본은 건드리지 않는다.
 
   실행:        powershell -ExecutionPolicy Bypass -File .\make_ppt_animation.ps1
   동영상까지:  ... -File .\make_ppt_animation.ps1 -ExportVideo
@@ -10,7 +10,7 @@ param(
     [string]$SourcePath   = 'C:\박은영PDF\26 입학 설명회 영상.pptx',
     [string]$MusicPath    = '',            # 비우면 같은 폴더의 첫 mp3 사용
     [string]$OutputPath   = '',            # 비우면 "<원본이름>_애니메이션.pptx"
-    [double]$TotalSeconds = 50,
+    [double]$TotalSeconds = 60,
     [switch]$ExportVideo                   # 저장 후 MP4(1080p)도 생성
 )
 
