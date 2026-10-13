@@ -16,8 +16,7 @@
 
 1. 원본 `박은영동영상만들기261013.pptx` 는 건드리지 않습니다. 매크로가 **`박은영동영상만들기261013_애니메이션.pptx`** 라는 새 이름으로 저장한 뒤 작업합니다.
 2. PPT 파일 열기 → `Alt + F11` (VBA 편집기)
-3. 메뉴 **파일 → 파일 가져오기** → `AddAnimationAndExport.bas` 선택
-   - 한글이 깨지면: .bas 파일을 메모장으로 열어 **ANSI** 인코딩으로 다시 저장한 후 가져오세요.
+3. 메뉴 **파일 → 파일 가져오기** → **`AddAnimationAndExport_ANSI.bas`** 선택 (한글 Windows용, 한글 안 깨짐)
 4. VBA 창 닫기 → `Alt + F8` → **ApplyCleanAnimations** 실행
 5. `F5`로 슬라이드 쇼를 보며 확인 (마음에 안 드는 슬라이드는 직접 수정 가능)
 6. `Alt + F8` → **ExportVideo** 실행
