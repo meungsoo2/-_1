@@ -38,26 +38,51 @@ $EntrancePool = @{
 $ExitPool = @(@{Id=$fxFade}, @{Id=$fxZoom}, @{Id=$fxFly;Dir=$dirUp}, @{Id=$fxFly;Dir=$dirLeft})
 $GroupOrder = @('bg','shape','photo','text')
 
-# ---- 파일 확인 ----
-if (-not (Test-Path -LiteralPath $ExcelPath)) { throw "엑셀 파일이 없습니다: $ExcelPath" }
-$folder = Split-Path -LiteralPath $ExcelPath -Parent
+# ---- 엑셀 찾기: 지정 경로 → 열려 있는 엑셀 → 폴더에서 이름으로 검색 ----
+$DefaultFolder = 'C:\박은영PDF'
+$xl = $null; $wb = $null
+try { $xl = [Runtime.InteropServices.Marshal]::GetActiveObject('Excel.Application') } catch {}
+
+if ($xl) {
+    foreach ($w in $xl.Workbooks) { if ($w.FullName -ieq $ExcelPath) { $wb = $w; break } }
+    if (-not $wb -and -not (Test-Path -LiteralPath $ExcelPath)) {
+        # 열려 있는 통합문서 중 이름이 비슷한 것 → 없으면 현재 활성 통합문서
+        $want = ([IO.Path]::GetFileNameWithoutExtension($ExcelPath)) -replace '\s', ''
+        foreach ($w in $xl.Workbooks) { if ((($w.Name -replace '\s', '') -like "*$want*")) { $wb = $w; break } }
+        if (-not $wb) { foreach ($w in $xl.Workbooks) { if ($w.Name -like '*입학*') { $wb = $w; break } } }
+        if (-not $wb -and $xl.Workbooks.Count -ge 1) { $wb = $xl.ActiveWorkbook }
+    }
+}
+if (-not $wb) {
+    if (-not (Test-Path -LiteralPath $ExcelPath)) {
+        $search = if (Test-Path -LiteralPath (Split-Path $ExcelPath -Parent)) { Split-Path $ExcelPath -Parent } else { $DefaultFolder }
+        $found = Get-ChildItem -LiteralPath $search -Include *.xls, *.xlsx, *.xlsm, *.xlsb -Recurse -ErrorAction SilentlyContinue |
+                 Sort-Object { if ($_.Name -like '*입학*') { 0 } else { 1 } }, LastWriteTime -Descending | Select-Object -First 1
+        if (-not $found) {
+            Write-Host "[$search] 폴더의 파일 목록:"
+            Get-ChildItem -LiteralPath $search -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "   $($_.Name)" }
+            throw "엑셀 파일을 찾지 못했습니다. 엑셀에서 파일을 열어 둔 채로 다시 실행하세요."
+        }
+        $ExcelPath = $found.FullName
+    }
+    if (-not $xl) { $xl = New-Object -ComObject Excel.Application; $xl.Visible = $true }
+    $wb = $xl.Workbooks.Open($ExcelPath)
+}
+$ExcelPath = $wb.FullName
+
+# OneDrive 등 웹 경로면 기본 폴더 사용
+$folder = if ($wb.Path -and $wb.Path -notmatch '^https?:') { $wb.Path } else { $DefaultFolder }
 if (-not $MusicPath) {
-    $mp3 = Get-ChildItem -LiteralPath $folder -Filter *.mp3 | Select-Object -First 1
+    $mp3 = Get-ChildItem -LiteralPath $folder -Filter *.mp3 -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $mp3) { $mp3 = Get-ChildItem -LiteralPath $DefaultFolder -Filter *.mp3 -ErrorAction SilentlyContinue | Select-Object -First 1 }
     if ($mp3) { $MusicPath = $mp3.FullName }
 }
 if (-not $OutputPath) {
-    $OutputPath = Join-Path $folder (([IO.Path]::GetFileNameWithoutExtension($ExcelPath)) + '_애니메이션.pptx')
+    $OutputPath = Join-Path $folder (([IO.Path]::GetFileNameWithoutExtension($wb.Name)) + '_애니메이션.pptx')
 }
 Write-Host "엑셀 : $ExcelPath"
 Write-Host "음악 : $(if ($MusicPath) { $MusicPath } else { '(mp3 없음 - 음악 생략)' })"
 Write-Host "출력 : $OutputPath"
-
-# ---- 열려 있는 Excel 사용 (없으면 새로 열기) ----
-try { $xl = [Runtime.InteropServices.Marshal]::GetActiveObject('Excel.Application') }
-catch { $xl = New-Object -ComObject Excel.Application; $xl.Visible = $true }
-$wb = $null
-foreach ($w in $xl.Workbooks) { if ($w.FullName -ieq $ExcelPath) { $wb = $w; break } }
-if (-not $wb) { $wb = $xl.Workbooks.Open($ExcelPath) }
 
 # ---- PowerPoint 새 프레젠테이션 (16:9) ----
 $pp = New-Object -ComObject PowerPoint.Application
