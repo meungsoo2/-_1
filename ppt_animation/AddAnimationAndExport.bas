@@ -9,11 +9,12 @@ Attribute VB_Name = "AddAnimationAndExport"
 Option Explicit
 
 ' ---- 원하는 대로 조정하세요 ----
-Private Const SLIDE_HOLD As Single = 2        ' 애니메이션 끝난 뒤 머무는 시간(초)
-Private Const ANIM_DURATION As Single = 0.4   ' 덩어리 하나가 나타나는 시간(초)
-Private Const ANIM_GAP As Single = 0.1        ' 덩어리 사이 간격(초)
-Private Const TRANSITION_SEC As Single = 0.5  ' 슬라이드 전환 시간(초)
-Private Const MAX_CHUNKS As Long = 3          ' 슬라이드당 최대 덩어리 수 (1 = 슬라이드 전체가 한 번에)
+Private Const SLIDE_HOLD As Single = 1.5        ' 애니메이션 끝난 뒤 머무는 시간(초)
+Private Const ANIM_DURATION As Single = 0.25  ' 덩어리 하나가 나타나는 시간(초)
+Private Const ANIM_GAP As Single = 0          ' 덩어리 사이 간격(초)
+Private Const TRANSITION_SEC As Single = 0.3  ' 슬라이드 전환 시간(초)
+Private Const MAX_CHUNKS As Long = 2          ' 슬라이드당 최대 덩어리 수 (1 = 슬라이드 전체가 한 번에)
+Private Const CHUNK_GAP As Single = 40         ' 이 거리(pt) 이상 떨어져야 다른 덩어리 (클수록 크게 묶임)
 Private Const VIDEO_HEIGHT As Long = 1080     ' 1080 = Full HD, 720 = HD
 Private Const ANIM_SUFFIX As String = "_애니메이션" ' 새 PPT 파일 이름 뒤에 붙는 말
 Private Const VIDEO_SUFFIX As String = "_동영상"    ' 동영상 파일 이름 뒤에 붙는 말
@@ -86,13 +87,13 @@ Private Sub ApplyToSlide(sld As Slide, slideW As Single, slideH As Single)
     chunks = 0
     For i = 1 To n
         Set shp = sld.Shapes(idx(i))
-        If chunks = 0 Or (shp.Top >= chunkBottom - 5 And chunks < MAX_CHUNKS) Then
+        If chunks = 0 Or (shp.Top >= chunkBottom + CHUNK_GAP And chunks < MAX_CHUNKS) Then
             ' 새 덩어리 시작
             chunks = chunks + 1
             Set eff = seq.AddEffect(Shape:=shp, effectId:=msoAnimEffectFade, _
                                     trigger:=msoAnimTriggerAfterPrevious)
             If chunks = 1 Then
-                eff.Timing.TriggerDelayTime = 0.1
+                eff.Timing.TriggerDelayTime = 0
             Else
                 eff.Timing.TriggerDelayTime = ANIM_GAP
             End If
@@ -107,7 +108,7 @@ Private Sub ApplyToSlide(sld As Slide, slideW As Single, slideH As Single)
     Next i
 
     ' 5) 슬라이드 전환 + 자동 넘김 시간
-    totalTime = 0.1 + chunks * ANIM_DURATION + IIf(chunks > 1, (chunks - 1) * ANIM_GAP, 0) + SLIDE_HOLD
+    totalTime = chunks * ANIM_DURATION + IIf(chunks > 1, (chunks - 1) * ANIM_GAP, 0) + SLIDE_HOLD
     With sld.SlideShowTransition
         .EntryEffect = ppEffectFadeSmoothly
         .Duration = TRANSITION_SEC
