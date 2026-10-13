@@ -42,6 +42,7 @@ Public Sub ApplyCleanAnimations()
         ApplyToSlide sld, pres.PageSetup.SlideWidth, pres.PageSetup.SlideHeight
     Next sld
 
+    SetupMusicPlayback pres   ' 배경음악이 있으면 재생 설정 다시 걸기
     pres.Save
     MsgBox "애니메이션 적용 완료! (" & pres.Slides.Count & "개 슬라이드)" & vbCrLf & _
            "저장된 파일: " & pres.FullName & vbCrLf & "(원본 파일은 그대로입니다)" & vbCrLf & _
@@ -215,30 +216,45 @@ Public Sub AddBackgroundMusic()
     Set snd = pres.Slides(1).Shapes.AddMediaObject2(musicPath, msoFalse, msoTrue, -100, -100, 30, 30)
     snd.Name = "BackgroundMusic"
 
-    With snd.AnimationSettings.PlaySettings
-        .PlayOnEntry = msoTrue               ' 슬라이드 시작과 함께 자동 재생
-        .StopAfterSlides = pres.Slides.Count ' 마지막 슬라이드까지 계속
-        .LoopUntilStopped = msoTrue          ' 음악이 짧으면 반복
-        .HideWhileNotPlaying = msoTrue
-    End With
     With snd.MediaFormat
         .Volume = MUSIC_VOLUME
         .FadeInDuration = MUSIC_FADE_SEC * 1000
         .FadeOutDuration = MUSIC_FADE_SEC * 1000
     End With
 
-    ' 음악 재생을 맨 앞으로 옮기고 "이전 효과와 함께" -> 슬라이드 시작 즉시 재생
-    Set seq = pres.Slides(1).TimeLine.MainSequence
-    For i = 1 To seq.Count
-        If seq.Item(i).Shape.Name = "BackgroundMusic" Then
-            seq.Item(i).MoveTo 1
-            seq.Item(1).Timing.TriggerType = msoAnimTriggerWithPrevious
-            Exit For
-        End If
-    Next i
+    SetupMusicPlayback pres
 
     pres.Save
     MsgBox "배경음악을 넣었습니다." & vbCrLf & "F5로 들어 보신 뒤 ExportVideo 를 실행하세요.", vbInformation
+End Sub
+
+' 배경음악 자동 재생 설정 (클릭 없이 시작, 끝까지 재생, 반복)
+Private Sub SetupMusicPlayback(pres As Presentation)
+    Dim snd As Shape
+    Dim seq As Sequence
+    Dim eff As Effect
+    Dim i As Long
+
+    For i = 1 To pres.Slides(1).Shapes.Count
+        If pres.Slides(1).Shapes(i).Name = "BackgroundMusic" Then Set snd = pres.Slides(1).Shapes(i)
+    Next i
+    If snd Is Nothing Then Exit Sub
+
+    ' 이 음악에 걸린 기존 효과(클릭 대기 등) 모두 제거
+    Set seq = pres.Slides(1).TimeLine.MainSequence
+    For i = seq.Count To 1 Step -1
+        If seq.Item(i).Shape.Name = "BackgroundMusic" Then seq.Item(i).Delete
+    Next i
+
+    ' 맨 앞(Index 1)에 "이전 효과와 함께" 재생 효과 추가 -> 슬라이드 시작 즉시 재생
+    Set eff = seq.AddEffect(Shape:=snd, effectId:=msoAnimEffectMediaPlay, _
+                            trigger:=msoAnimTriggerWithPrevious, Index:=1)
+    With eff.EffectInformation.PlaySettings
+        .StopAfterSlides = 999        ' 마지막 슬라이드까지 계속
+        .LoopUntilStopped = msoTrue   ' 음악이 짧으면 반복
+        .HideWhileNotPlaying = msoTrue
+        .PauseAnimation = msoFalse
+    End With
 End Sub
 
 Public Sub ExportVideo()
