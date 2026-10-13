@@ -14,18 +14,34 @@ Private Const ANIM_DURATION As Single = 0.6   ' 개체 하나가 나타나는 �
 Private Const ANIM_GAP As Single = 0.3        ' 개체 사이 간격(초)
 Private Const TRANSITION_SEC As Single = 0.7  ' 슬라이드 전환 시간(초)
 Private Const VIDEO_HEIGHT As Long = 1080     ' 1080 = Full HD, 720 = HD
+Private Const ANIM_SUFFIX As String = "_애니메이션" ' 새 PPT 파일 이름 뒤에 붙는 말
+Private Const VIDEO_SUFFIX As String = "_동영상"    ' 동영상 파일 이름 뒤에 붙는 말
 ' ------------------------------
 
 Public Sub ApplyCleanAnimations()
     Dim sld As Slide
     Dim pres As Presentation
+    Dim baseName As String, newPath As String
     Set pres = ActivePresentation
+
+    ' 원본을 보호하기 위해 다른 이름으로 먼저 저장 (예: 원본이름_애니메이션.pptx)
+    If pres.Path = "" Then
+        MsgBox "먼저 파일을 저장해 주세요.", vbExclamation
+        Exit Sub
+    End If
+    baseName = Left(pres.Name, InStrRev(pres.Name, ".") - 1)
+    If Right(baseName, Len(ANIM_SUFFIX)) <> ANIM_SUFFIX Then
+        newPath = pres.Path & "\" & baseName & ANIM_SUFFIX & ".pptx"
+        pres.SaveAs FileName:=newPath, FileFormat:=ppSaveAsOpenXMLPresentation
+    End If
 
     For Each sld In pres.Slides
         ApplyToSlide sld, pres.PageSetup.SlideWidth, pres.PageSetup.SlideHeight
     Next sld
 
+    pres.Save
     MsgBox "애니메이션 적용 완료! (" & pres.Slides.Count & "개 슬라이드)" & vbCrLf & _
+           "저장된 파일: " & pres.FullName & vbCrLf & "(원본 파일은 그대로입니다)" & vbCrLf & _
            "F5로 확인해 보신 뒤 ExportVideo 를 실행하세요.", vbInformation
 End Sub
 
@@ -123,7 +139,10 @@ Public Sub ExportVideo()
         Exit Sub
     End If
 
-    outPath = pres.Path & "\" & Left(pres.Name, InStrRev(pres.Name, ".") - 1) & "_animated.mp4"
+    Dim baseName As String
+    baseName = Left(pres.Name, InStrRev(pres.Name, ".") - 1)
+    If Right(baseName, Len(ANIM_SUFFIX)) = ANIM_SUFFIX Then baseName = Left(baseName, Len(baseName) - Len(ANIM_SUFFIX))
+    outPath = pres.Path & "\" & baseName & VIDEO_SUFFIX & ".mp4"
 
     ' UseTimingsAndNarrations=True -> 위에서 설정한 시간대로 녹화
     pres.CreateVideo FileName:=outPath, _
