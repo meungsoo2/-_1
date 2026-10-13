@@ -1,17 +1,16 @@
 ﻿<#
-  Excel(26 입학 설명회 영상.xlsx)의 시트별 도형/사진/글자를 PowerPoint 슬라이드로 옮기고
+  열려 있는 PPT(26 입학 설명회 영상.pptx)를 복사해서
   슬라이드마다 최대 4개 그룹(배경·도형·사진·글자)으로 묶어 화려한 등장/퇴장 애니메이션,
-  자동 넘김(총 50초), 배경음악(mp3)을 넣은 PPT를 만든다.
+  자동 넘김(총 50초), 배경음악(같은 폴더의 mp3)을 넣은 새 PPT를 만든다. 원본은 건드리지 않는다.
 
-  실행:  powershell -ExecutionPolicy Bypass -File .\make_ppt_animation.ps1
+  실행:        powershell -ExecutionPolicy Bypass -File .\make_ppt_animation.ps1
   동영상까지:  ... -File .\make_ppt_animation.ps1 -ExportVideo
 #>
 param(
-    [string]$ExcelPath    = 'C:\박은영PDF\26 입학 설명회 영상.xlsx',
+    [string]$SourcePath   = 'C:\박은영PDF\26 입학 설명회 영상.pptx',
     [string]$MusicPath    = '',            # 비우면 같은 폴더의 첫 mp3 사용
-    [string]$OutputPath   = '',            # 비우면 "<엑셀이름>_애니메이션.pptx"
+    [string]$OutputPath   = '',            # 비우면 "<원본이름>_애니메이션.pptx"
     [double]$TotalSeconds = 50,
-    [switch]$IncludeCells,                 # 셀 내용(표/글자)도 배경 그림으로 함께 넣기
     [switch]$ExportVideo                   # 저장 후 MP4(1080p)도 생성
 )
 
@@ -20,10 +19,9 @@ $ErrorActionPreference = 'Stop'
 # ---- Office 상수 ----
 $msoTrue = -1; $msoFalse = 0
 $msoGroup = 6; $msoPicture = 13; $msoLinkedPicture = 11; $msoTextBox = 17
-$msoComment = 4; $msoFormControl = 8
-$ppLayoutBlank = 12
+$msoMedia = 16; $msoPlaceholder = 14
 $trigWithPrevious = 2
-$fxAppear = 1; $fxFly = 2; $fxFade = 10; $fxSpiral = 15; $fxSwivel = 19
+$fxFly = 2; $fxFade = 10; $fxSpiral = 15; $fxSwivel = 19
 $fxWheel = 21; $fxZoom = 23; $fxBounce = 26; $fxFloat = 30; $fxGrowTurn = 31
 $dirUp = 1; $dirRight = 2; $dirDown = 3; $dirLeft = 4
 $ppEffectFadeSmoothly = 3849
@@ -38,90 +36,59 @@ $EntrancePool = @{
 $ExitPool = @(@{Id=$fxFade}, @{Id=$fxZoom}, @{Id=$fxFly;Dir=$dirUp}, @{Id=$fxFly;Dir=$dirLeft})
 $GroupOrder = @('bg','shape','photo','text')
 
-# ---- 엑셀 찾기: 지정 경로 → 열려 있는 엑셀 → 폴더에서 이름으로 검색 ----
+# ---- 원본 PPT 찾기: 열려 있는 PowerPoint → 지정 경로 → 폴더 검색 ----
 $DefaultFolder = 'C:\박은영PDF'
-$xl = $null; $wb = $null
-try { $xl = [Runtime.InteropServices.Marshal]::GetActiveObject('Excel.Application') } catch {}
+try { $pp = [Runtime.InteropServices.Marshal]::GetActiveObject('PowerPoint.Application') }
+catch { $pp = New-Object -ComObject PowerPoint.Application }
+$pp.Visible = $msoTrue
 
-if ($xl) {
-    foreach ($w in $xl.Workbooks) { if ($w.FullName -ieq $ExcelPath) { $wb = $w; break } }
-    if (-not $wb -and -not (Test-Path -LiteralPath $ExcelPath)) {
-        # 열려 있는 통합문서 중 이름이 비슷한 것 → 없으면 현재 활성 통합문서
-        $want = ([IO.Path]::GetFileNameWithoutExtension($ExcelPath)) -replace '\s', ''
-        foreach ($w in $xl.Workbooks) { if ((($w.Name -replace '\s', '') -like "*$want*")) { $wb = $w; break } }
-        if (-not $wb) { foreach ($w in $xl.Workbooks) { if ($w.Name -like '*입학*') { $wb = $w; break } } }
-        if (-not $wb -and $xl.Workbooks.Count -ge 1) { $wb = $xl.ActiveWorkbook }
-    }
+$src = $null
+foreach ($p in $pp.Presentations) { if ($p.FullName -ieq $SourcePath) { $src = $p; break } }
+if (-not $src) {
+    foreach ($p in $pp.Presentations) { if ($p.Name -like '*입학*' -and $p.Name -notlike '*_애니메이션*') { $src = $p; break } }
 }
-if (-not $wb) {
-    if (-not (Test-Path -LiteralPath $ExcelPath)) {
-        $search = if (Test-Path -LiteralPath (Split-Path $ExcelPath -Parent)) { Split-Path $ExcelPath -Parent } else { $DefaultFolder }
-        $found = Get-ChildItem -LiteralPath $search -Include *.xls, *.xlsx, *.xlsm, *.xlsb -Recurse -ErrorAction SilentlyContinue |
-                 Sort-Object { if ($_.Name -like '*입학*') { 0 } else { 1 } }, LastWriteTime -Descending | Select-Object -First 1
+if (-not $src) {
+    if (-not (Test-Path -LiteralPath $SourcePath)) {
+        $found = Get-ChildItem -LiteralPath $DefaultFolder -Filter *.pptx -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Name -like '*입학*' -and $_.Name -notlike '*_애니메이션*' } | Select-Object -First 1
         if (-not $found) {
-            Write-Host "[$search] 폴더의 파일 목록:"
-            Get-ChildItem -LiteralPath $search -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "   $($_.Name)" }
-            throw "엑셀 파일을 찾지 못했습니다. 엑셀에서 파일을 열어 둔 채로 다시 실행하세요."
+            Write-Host "[$DefaultFolder] 폴더의 파일 목록:"
+            Get-ChildItem -LiteralPath $DefaultFolder -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "   $($_.Name)" }
+            throw "원본 PPT를 찾지 못했습니다. PowerPoint에서 파일을 열어 둔 채로 다시 실행하세요."
         }
-        $ExcelPath = $found.FullName
+        $SourcePath = $found.FullName
     }
-    if (-not $xl) { $xl = New-Object -ComObject Excel.Application; $xl.Visible = $true }
-    $wb = $xl.Workbooks.Open($ExcelPath)
+    $src = $pp.Presentations.Open($SourcePath)
 }
-$ExcelPath = $wb.FullName
 
-# OneDrive 등 웹 경로면 기본 폴더 사용
-$folder = if ($wb.Path -and $wb.Path -notmatch '^https?:') { $wb.Path } else { $DefaultFolder }
+$folder = if ($src.Path -and $src.Path -notmatch '^https?:') { $src.Path } else { $DefaultFolder }
 if (-not $MusicPath) {
     $mp3 = Get-ChildItem -LiteralPath $folder -Filter *.mp3 -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $mp3) { $mp3 = Get-ChildItem -LiteralPath $DefaultFolder -Filter *.mp3 -ErrorAction SilentlyContinue | Select-Object -First 1 }
     if ($mp3) { $MusicPath = $mp3.FullName }
 }
 if (-not $OutputPath) {
-    $OutputPath = Join-Path $folder (([IO.Path]::GetFileNameWithoutExtension($wb.Name)) + '_애니메이션.pptx')
+    $OutputPath = Join-Path $folder (([IO.Path]::GetFileNameWithoutExtension($src.Name)) + '_애니메이션.pptx')
 }
-Write-Host "엑셀 : $ExcelPath"
+Write-Host "원본 : $($src.FullName)"
 Write-Host "음악 : $(if ($MusicPath) { $MusicPath } else { '(mp3 없음 - 음악 생략)' })"
 Write-Host "출력 : $OutputPath"
 
-# ---- PowerPoint 새 프레젠테이션 (16:9) ----
-$pp = New-Object -ComObject PowerPoint.Application
-$pp.Visible = $msoTrue
-$pres = $pp.Presentations.Add($msoTrue)
-$pres.PageSetup.SlideWidth = 960
-$pres.PageSetup.SlideHeight = 540
-$SW = 960.0; $SH = 540.0; $Margin = 20.0
+# 같은 이름의 결과 파일이 열려 있으면 닫기
+foreach ($p in @($pp.Presentations)) { if ($p.FullName -ieq $OutputPath) { $p.Close() } }
 
-function Invoke-Paste($slide) {
-    for ($t = 0; $t -lt 8; $t++) {
-        try { return $slide.Shapes.Paste() } catch { Start-Sleep -Milliseconds 400 }
-    }
-    throw '붙여넣기에 실패했습니다 (클립보드).'
-}
-
-function Get-Items($range) {
-    $list = @(); for ($i = 1; $i -le $range.Count; $i++) { $list += $range.Item($i) }; return $list
-}
-
-function Scale-Fonts($shp, [double]$k) {
-    if ($shp.Type -eq $msoGroup) {
-        for ($i = 1; $i -le $shp.GroupItems.Count; $i++) { Scale-Fonts $shp.GroupItems.Item($i) $k }
-        return
-    }
-    try {
-        if ($shp.HasTextFrame -and $shp.TextFrame2.HasText) {
-            $runs = $shp.TextFrame2.TextRange.Runs()
-            for ($i = 1; $i -le $runs.Count; $i++) { $r = $runs.Item($i); $r.Font.Size = [Math]::Max(6, $r.Font.Size * $k) }
-        }
-    } catch {}
-}
+# 원본은 그대로 두고 복사본에 작업
+$src.SaveCopyAs($OutputPath)
+$pres = $pp.Presentations.Open($OutputPath)
+$SW = [double]$pres.PageSetup.SlideWidth
+$SH = [double]$pres.PageSetup.SlideHeight
 
 function Test-HasPicture($shp) {
     if ($shp.Type -eq $msoPicture -or $shp.Type -eq $msoLinkedPicture) { return $true }
     if ($shp.Type -eq $msoGroup) {
         for ($i = 1; $i -le $shp.GroupItems.Count; $i++) { if (Test-HasPicture $shp.GroupItems.Item($i)) { return $true } }
     }
-    try { if ($shp.Fill.Type -eq 6) { return $true } } catch {}   # 그림 채우기 도형
+    try { if ($shp.Type -eq $msoPlaceholder -and $shp.PlaceholderFormat.ContainedType -eq $msoPicture) { return $true } } catch {}
+    try { if ($shp.Fill.Type -eq 6) { return $true } } catch {}   # 그림으로 채운 도형
     return $false
 }
 
@@ -129,14 +96,14 @@ function Get-OverlapRatio($a, $b) {   # a 면적 중 b와 겹치는 비율
     $w = [Math]::Min($a.Left + $a.Width, $b.Left + $b.Width) - [Math]::Max($a.Left, $b.Left)
     $h = [Math]::Min($a.Top + $a.Height, $b.Top + $b.Height) - [Math]::Max($a.Top, $b.Top)
     if ($w -le 0 -or $h -le 0) { return 0 }
-    $area = [Math]::Max(1, $a.Width * $a.Height)
-    return ($w * $h) / $area
+    return ($w * $h) / [Math]::Max(1, $a.Width * $a.Height)
 }
 
 function Test-IsText($shp) {
     try {
         if ($shp.Type -eq $msoTextBox) { return $true }
         if ($shp.HasTextFrame -and $shp.TextFrame2.HasText -and -not $shp.Fill.Visible) { return $true }
+        if ($shp.Type -eq $msoPlaceholder -and $shp.HasTextFrame -and $shp.TextFrame2.HasText) { return $true }
     } catch {}
     return $false
 }
@@ -149,63 +116,38 @@ function Add-Fx($slide, $shape, $fx, [double]$delay, [double]$dur, [bool]$isExit
     if ($isExit) { $e.Exit = $msoTrue }
     $e.Timing.Duration = $dur
     $e.Timing.TriggerDelayTime = $delay
-    return $e
 }
 
-# ---- 시트 → 슬라이드 ----
-$sheets = @()
-foreach ($ws in $wb.Worksheets) {
-    if ($ws.Visible -ne -1) { continue }
-    $idx = @()
-    for ($i = 1; $i -le $ws.Shapes.Count; $i++) {
-        $t = $ws.Shapes.Item($i).Type
-        if ($t -ne $msoComment -and $t -ne $msoFormControl) { $idx += $i }
-    }
-    $hasCells = $xl.WorksheetFunction.CountA($ws.UsedRange) -gt 0
-    if ($idx.Count -gt 0 -or $hasCells) { $sheets += @{ Ws = $ws; Idx = $idx; Cells = $hasCells } }
+# ---- 대상 슬라이드 (숨긴 슬라이드 제외) ----
+$slides = @()
+for ($i = 1; $i -le $pres.Slides.Count; $i++) {
+    $s = $pres.Slides.Item($i)
+    if ($s.SlideShowTransition.Hidden -ne $msoTrue) { $slides += $s }
 }
-if ($sheets.Count -eq 0) { throw '옮길 내용(도형/셀)이 있는 시트가 없습니다.' }
-
-$N = $sheets.Count
+$N = $slides.Count
+if ($N -eq 0) { throw '슬라이드가 없습니다.' }
 $SlideDur = $TotalSeconds / $N
 $Trans = 0.6
 Write-Host "슬라이드 $N 장, 장당 약 $([Math]::Round($SlideDur,1))초"
 
 $slideNo = 0
-foreach ($info in $sheets) {
+foreach ($slide in $slides) {
     $slideNo++
-    $ws = $info.Ws
-    Write-Host "[$slideNo/$N] 시트 '$($ws.Name)' 처리 중..."
-    $slide = $pres.Slides.Add($slideNo, $ppLayoutBlank)
-    $ws.Activate()
+    Write-Host "[$slideNo/$N] 슬라이드 처리 중..."
 
-    $pasted = @()
-    # 셀 내용: 도형이 없거나 -IncludeCells 이면 그림으로 넣음
-    if ($info.Cells -and ($info.Idx.Count -eq 0 -or $IncludeCells)) {
-        $ws.UsedRange.CopyPicture(1, -4147)
-        $pasted += Get-Items (Invoke-Paste $slide)
+    # 기존 애니메이션 지우기
+    $seq = $slide.TimeLine.MainSequence
+    for ($i = $seq.Count; $i -ge 1; $i--) { $seq.Item($i).Delete() }
+
+    # 대상 도형 (오디오/비디오, 빈 개체 틀 제외). 이름이 겹치지 않게 정리
+    $items = @()
+    for ($i = 1; $i -le $slide.Shapes.Count; $i++) {
+        $s = $slide.Shapes.Item($i)
+        if ($s.Type -eq $msoMedia) { continue }
+        try { if ($s.Type -eq $msoPlaceholder -and $s.HasTextFrame -and -not $s.TextFrame2.HasText) { continue } } catch {}
+        $s.Name = "S${slideNo}_$i"
+        $items += $s
     }
-    if ($info.Idx.Count -gt 0) {
-        $ws.Shapes.Range([object[]]$info.Idx).Select()
-        $xl.Selection.Copy()
-        Start-Sleep -Milliseconds 300
-        $pasted += Get-Items (Invoke-Paste $slide)
-    }
-
-    # 전체를 슬라이드 크기에 맞춤 (상대 위치 유지)
-    if ($pasted.Count -gt 1) {
-        $tmp = $slide.Shapes.Range([object[]]($pasted | ForEach-Object { $_.Name })).Group()
-    } else { $tmp = $pasted[0] }
-    $k = [Math]::Min(($SW - 2*$Margin) / $tmp.Width, ($SH - 2*$Margin) / $tmp.Height)
-    $tmp.LockAspectRatio = $msoTrue
-    $tmp.Width = $tmp.Width * $k
-    $tmp.Left = ($SW - $tmp.Width) / 2
-    $tmp.Top  = ($SH - $tmp.Height) / 2
-    if ([Math]::Abs($k - 1) -gt 0.05) { Scale-Fonts $tmp $k }
-    if ($pasted.Count -gt 1) { $items = Get-Items ($tmp.Ungroup()) } else { $items = @($tmp) }
-
-    $j = 0
-    foreach ($s in $items) { $j++; $s.Name = "S${slideNo}_$j" }
 
     # ---- 4개 그룹으로 분류 ----
     $cat = @{ bg = @(); shape = @(); photo = @(); text = @() }
@@ -224,35 +166,52 @@ foreach ($info in $sheets) {
         else { $cat.shape += $s }
     }
 
+    # 그룹으로 묶기. 개체 틀/표처럼 묶을 수 없는 건 묶지 않고 같은 타이밍으로 함께 움직임
     $groups = @()
     foreach ($key in $GroupOrder) {
-        $members = $cat[$key]
+        $members = @($cat[$key])
         if ($members.Count -eq 0) { continue }
+        $targets = $members
         if ($members.Count -gt 1) {
-            $g = $slide.Shapes.Range([object[]]($members | ForEach-Object { $_.Name })).Group()
-        } else { $g = $members[0] }
-        $g.Name = "G${slideNo}_$key"
-        $groups += @{ Key = $key; Shape = $g }
+            try {
+                $g = $slide.Shapes.Range([object[]]($members | ForEach-Object { $_.Name })).Group()
+                $g.Name = "G${slideNo}_$key"
+                $targets = @($g)
+            } catch {
+                $groupable = @($members | Where-Object { $_.Type -ne $msoPlaceholder -and -not $_.HasTable })
+                $rest      = @($members | Where-Object { $_.Type -eq $msoPlaceholder -or $_.HasTable })
+                if ($groupable.Count -gt 1) {
+                    try {
+                        $g = $slide.Shapes.Range([object[]]($groupable | ForEach-Object { $_.Name })).Group()
+                        $g.Name = "G${slideNo}_$key"
+                        $targets = @($g) + $rest
+                    } catch { $targets = $members }
+                }
+            }
+        }
+        $groups += @{ Key = $key; Targets = $targets }
     }
-    Write-Host ("    그룹: " + (($groups | ForEach-Object { "$($_.Key)" }) -join ', '))
+    Write-Host ("    그룹: " + (($groups | ForEach-Object { "$($_.Key)($($_.Targets.Count))" }) -join ', '))
 
-    # ---- 애니메이션 (모두 '이전 효과와 함께' + 지연시간으로 절대 시점 지정) ----
+    # ---- 애니메이션 (모두 '이전 효과와 함께' + 지연시간으로 시점 지정) ----
     $inDur = 0.9; $inGap = 0.45; $outDur = 0.6; $outGap = 0.15
     $gi = 0
     foreach ($g in $groups) {
         $pool = $EntrancePool[$g.Key]
         $fx = $pool[($slideNo + $gi) % $pool.Count]
-        [void](Add-Fx $slide $g.Shape $fx (0.2 + $gi * $inGap) $inDur $false)
+        foreach ($t in $g.Targets) { Add-Fx $slide $t $fx (0.2 + $gi * $inGap) $inDur $false }
         $gi++
     }
-    $inEnd = 0.2 + ($groups.Count - 1) * $inGap + $inDur
-    $outStart = $SlideDur - $Trans - 0.2 - ($groups.Count - 1) * $outGap - $outDur
-    if ($slideNo -lt $N -and $outStart -gt $inEnd + 1.0) {
-        $gi = 0
-        foreach ($g in ($groups[($groups.Count-1)..0])) {   # 나중에 나온 그룹부터 퇴장
-            $fx = $ExitPool[($slideNo + $gi) % $ExitPool.Count]
-            [void](Add-Fx $slide $g.Shape $fx ($outStart + $gi * $outGap) $outDur $true)
-            $gi++
+    if ($groups.Count -gt 0) {
+        $inEnd = 0.2 + ($groups.Count - 1) * $inGap + $inDur
+        $outStart = $SlideDur - $Trans - 0.2 - ($groups.Count - 1) * $outGap - $outDur
+        if ($slideNo -lt $N -and $outStart -gt $inEnd + 1.0) {
+            $gi = 0
+            foreach ($g in ($groups[($groups.Count-1)..0])) {   # 나중에 나온 그룹부터 퇴장
+                $fx = $ExitPool[($slideNo + $gi) % $ExitPool.Count]
+                foreach ($t in $g.Targets) { Add-Fx $slide $t $fx ($outStart + $gi * $outGap) $outDur $true }
+                $gi++
+            }
         }
     }
 
@@ -265,9 +224,9 @@ foreach ($info in $sheets) {
     $tr.AdvanceTime = [Math]::Max(1, $SlideDur - $Trans)
 }
 
-# ---- 배경음악: 1번 슬라이드에서 시작해 끝까지 재생 ----
+# ---- 배경음악: 첫 슬라이드에서 시작해 끝까지 재생 ----
 if ($MusicPath) {
-    $s1 = $pres.Slides.Item(1)
+    $s1 = $slides[0]
     $m = $s1.Shapes.AddMediaObject2($MusicPath, $msoFalse, $msoTrue, -60, -60, 40, 40)
     $m.Name = 'BGM'
     $ps = $m.AnimationSettings.PlaySettings
@@ -289,7 +248,7 @@ if ($MusicPath) {
     }
 }
 
-$pres.SaveAs($OutputPath)
+$pres.Save()
 Write-Host "저장 완료: $OutputPath"
 
 # ---- (선택) MP4 내보내기 ----
