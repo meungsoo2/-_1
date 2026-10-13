@@ -16,6 +16,8 @@ Private Const TRANSITION_SEC As Single = 0.4 ' 슬라이드 전환 시간(초)
 Private Const GROUP_MARGIN As Single = 5     ' 이 거리(pt) 안에서 겹치거나 맞닿으면 같은 그룹 (클수록 크게 묶임)
 Private Const VIDEO_HEIGHT As Long = 1080     ' 1080 = Full HD, 720 = HD
 Private Const ANIM_SUFFIX As String = "_애니메이션" ' 새 PPT 파일 이름 뒤에 붙는 말
+Private Const MUSIC_VOLUME As Single = 0.5   ' 배경음악 볼륨 (0 ~ 1)
+Private Const MUSIC_FADE_SEC As Single = 2   ' 음악 시작/끝 페이드 시간(초)
 Private Const VIDEO_SUFFIX As String = "_동영상"    ' 동영상 파일 이름 뒤에 붙는 말
 ' ------------------------------
 
@@ -171,6 +173,7 @@ End Function
 Private Function ShouldAnimate(shp As Shape, slideW As Single, slideH As Single) As Boolean
     ShouldAnimate = False
     If Not shp.Visible Then Exit Function
+    If shp.Type = msoMedia Then Exit Function   ' 배경음악 아이콘 제외
 
     ' 슬라이드의 80% 이상을 덮는 배경 개체는 제외
     If shp.Width * shp.Height >= 0.8 * slideW * slideH Then Exit Function
@@ -184,6 +187,59 @@ Private Function ShouldAnimate(shp As Shape, slideW As Single, slideH As Single)
 
     ShouldAnimate = True
 End Function
+
+' 배경음악 넣기: ApplyCleanAnimations 다음에 실행하세요
+Public Sub AddBackgroundMusic()
+    Dim pres As Presentation
+    Dim fd As FileDialog
+    Dim musicPath As String
+    Dim snd As Shape
+    Dim seq As Sequence
+    Dim i As Long
+
+    Set pres = ActivePresentation
+
+    Set fd = Application.FileDialog(msoFileDialogFilePicker)
+    fd.Title = "배경음악 파일을 선택하세요 (mp3, wav, m4a)"
+    fd.Filters.Clear
+    fd.Filters.Add "음악 파일", "*.mp3;*.wav;*.m4a;*.wma"
+    If fd.Show <> -1 Then Exit Sub
+    musicPath = fd.SelectedItems(1)
+
+    ' 이미 넣은 배경음악이 있으면 지우고 새로 넣기
+    For i = pres.Slides(1).Shapes.Count To 1 Step -1
+        If pres.Slides(1).Shapes(i).Name = "BackgroundMusic" Then pres.Slides(1).Shapes(i).Delete
+    Next i
+
+    ' 1번 슬라이드에 넣고 (파일에 포함), 화면 밖에 숨김
+    Set snd = pres.Slides(1).Shapes.AddMediaObject2(musicPath, msoFalse, msoTrue, -100, -100, 30, 30)
+    snd.Name = "BackgroundMusic"
+
+    With snd.AnimationSettings.PlaySettings
+        .PlayOnEntry = msoTrue               ' 슬라이드 시작과 함께 자동 재생
+        .StopAfterSlides = pres.Slides.Count ' 마지막 슬라이드까지 계속
+        .LoopUntilStopped = msoTrue          ' 음악이 짧으면 반복
+        .HideWhileNotPlaying = msoTrue
+    End With
+    With snd.MediaFormat
+        .Volume = MUSIC_VOLUME
+        .FadeInDuration = MUSIC_FADE_SEC * 1000
+        .FadeOutDuration = MUSIC_FADE_SEC * 1000
+    End With
+
+    ' 음악 재생을 맨 앞으로 옮기고 "이전 효과와 함께" -> 슬라이드 시작 즉시 재생
+    Set seq = pres.Slides(1).TimeLine.MainSequence
+    For i = 1 To seq.Count
+        If seq.Item(i).Shape.Name = "BackgroundMusic" Then
+            seq.Item(i).MoveTo 1
+            seq.Item(1).Timing.TriggerType = msoAnimTriggerWithPrevious
+            Exit For
+        End If
+    Next i
+
+    pres.Save
+    MsgBox "배경음악을 넣었습니다." & vbCrLf & "F5로 들어 보신 뒤 ExportVideo 를 실행하세요.", vbInformation
+End Sub
 
 Public Sub ExportVideo()
     Dim outPath As String

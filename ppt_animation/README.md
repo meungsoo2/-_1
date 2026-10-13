@@ -19,7 +19,11 @@
 3. 메뉴 **파일 → 파일 가져오기** → **`AddAnimationAndExport_ANSI.bas`** 선택 (한글 Windows용, 한글 안 깨짐)
 4. VBA 창 닫기 → `Alt + F8` → **ApplyCleanAnimations** 실행
 5. `F5`로 슬라이드 쇼를 보며 확인 (마음에 안 드는 슬라이드는 직접 수정 가능)
-6. `Alt + F8` → **ExportVideo** 실행
+6. (배경음악) `Alt + F8` → **AddBackgroundMusic** 실행 → 음악 파일(mp3 등) 선택
+   - 1번 슬라이드부터 마지막까지 계속 재생, 짧으면 반복, 시작/끝 2초 페이드
+   - 볼륨은 `MUSIC_VOLUME` (기본 0.5)
+   - ⚠️ 애니메이션을 다시 적용(ApplyCleanAnimations)했다면 음악도 다시 넣어 주세요
+7. `Alt + F8` → **ExportVideo** 실행
    → 같은 폴더에 **`박은영동영상만들기261013_동영상.mp4`** 생성
 
 ## 조정하기
